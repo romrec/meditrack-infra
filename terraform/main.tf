@@ -1,0 +1,156 @@
+# main.tf
+provider "aws" {
+  region = "eu-west-3"
+}
+
+resource "random_id" "suffix" {
+  byte_length = 4
+}
+
+resource "aws_vpc" "meditrack_vpc" {
+  cidr_block = "10.0.0.0/16"
+  tags = {
+    Name = "MediTrack-vpc"
+  }
+}
+
+resource "aws_instance" "meditrack_web_server" {
+  ami           = "ami-0c55b159cbfafe1f0"  # Amazon Linux 2
+  instance_type = "t2.micro"
+  subnet_id     = aws_subnet.meditrack_public_subnet.id
+  tags = {
+    Name = "MediTrack-web-server"
+  }
+
+  root_block_device {
+    encrypted = true  # Chiffrement pour RGPD/HDS
+  }
+
+  lifecycle {
+    prevent_destroy = false  # Autorise la suppression si nécessaire
+    ignore_changes  = [ami]  # Ignore les changements d'AMI
+  }
+}
+
+# Créer un bucket S3 pour le site statique
+resource "aws_s3_bucket" "meditrack_website" {
+  bucket = "meditrack-website-${random_id.suffix.hex}"
+  tags = {
+    Name = "MediTrack Website"
+  }
+}
+
+# Désactiver le blocage d'accès public pour le bucket (requis pour CloudFront)
+resource "aws_s3_bucket_public_access_block" "meditrack_website" {
+  bucket = aws_s3_bucket.meditrack_website.id
+  block_public_acls       = false
+  block_public_policy     = false
+  ignore_public_acls      = false
+  restrict_public_buckets = false
+}
+
+# Créer une identité d'accès d'origine CloudFront
+resource "aws_cloudfront_origin_access_identity" "meditrack_oai" {
+  comment = "OAI for MediTrack website"
+}
+
+# Politique de bucket S3 pour autoriser CloudFront
+resource "aws_s3_bucket_policy" "meditrack_website_policy" {
+  bucket = aws_s3_bucket.meditrack_website.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid       = "AllowCloudFrontAccess"
+        Effect    = "Allow"
+        Principal = {
+          AWS = "arn:aws:iam::cloudfront:user/CloudFront Origin Access Identity ${aws_cloudfront_origin_access_identity.meditrack_oai.id}"
+        }
+        Action   = "s3:GetObject"
+        Resource = "${aws_s3_bucket.meditrack_website.arn}/*"
+      }
+    ]
+  })
+}
+
+# Uploader les fichiers statiques dans le bucket S3
+resource "aws_s3_object" "index_html" {
+  bucket       = aws_s3_bucket.meditrack_website.id
+  key          = "index.html"
+  source       = "../site-static/index.html"
+  content_type = "text/html"
+  etag         = filemd5("../site-static/index.html")
+}
+
+resource "aws_s3_object" "style_css" {
+  bucket       = aws_s3_bucket.meditrack_website.id
+  key          = "style.css"
+  source       = "../site-static/style.css"
+  content_type = "text/css"
+  etag         = filemd5("../site-static/style.css")
+}
+
+# Créer une distribution CloudFront
+resource "aws_cloudfront_distribution" "meditrack_distribution" {
+  origin {
+    domain_name = aws_s3_bucket.meditrack_website.bucket_regional_domain_name
+    origin_id   = "S3-meditrack-website"
+
+    s3_origin_config {
+      origin_access_identity = aws_cloudfront_origin_access_identity.meditrack_oai.cloudfront_access_identity_path
+    }
+  }
+
+  enabled             = true
+  is_ipv6_enabled     = true
+  comment             = "MediTrack website distribution"
+  default_root_object = "index.html"
+
+  default_cache_behavior {
+    allowed_methods  = ["GET", "HEAD"]
+    cached_methods   = ["GET", "HEAD"]
+    target_origin_id = "S3-meditrack-website"
+
+    forwarded_values {
+      query_string = false
+      cookies {
+        forward = "none"
+      }
+    }
+
+    viewer_protocol_policy = "redirect-to-https"
+    min_ttl                = 0
+    default_ttl            = 3600
+    max_ttl                = 86400
+  }
+
+  price_class = "PriceClass_100"
+
+  restrictions {
+    geo_restriction {
+      restriction_type = "none"
+    }
+  }
+
+  viewer_certificate {
+    cloudfront_default_certificate = true
+  }
+
+  tags = {
+    Name = "MediTrack Distribution"
+  }
+}
+
+terraform {
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 4.16"
+    }
+  }
+  required_version = ">= 1.2.0"
+}
+
+provider "aws" {
+  region = "eu-west-3"
+}

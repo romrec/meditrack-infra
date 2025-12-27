@@ -1,0 +1,28 @@
+# Clés AWS et configurations sensibles
+.aws/
+
+# Terraform
+.terraform/
+terraform.tfvars
+*.tfstate
+*.tfstate.*
+
+# Fichiers temporaires
+*.tmp
+*.bak
+*.log
+
+# Fichiers système
+.DS_Store
+Thumbs.db
+
+# Environnements virtuels
+venv/
+__pycache__/
+
+# Fichiers de mots de passe
+*.pem
+*.key
+
+# Documents temporaires
+~$*.docx
