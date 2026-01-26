@@ -120,7 +120,7 @@ resource "aws_instance" "meditrack_web_server" {
 
 # Créer un bucket S3 pour le site statique
 resource "aws_s3_bucket" "meditrack_website" {
-  bucket = "meditrack-website-${random_id.suffix.hex}"
+  bucket = "meditrack-website-cfb77422"
   tags = {
     Name = "MediTrack Website"
   }
