@@ -23,18 +23,23 @@ Infrastructure as Code pour le projet MediTrack utilisant Terraform et Ansible. 
 
 ## Installation des outils
 
-### Terraform
-```bash
-sudo apt update
-sudo apt install -y terraform
-terraform --version
+### Terraform (Windows)
+```powershell
+winget install Hashicorp.Terraform
+# Ou utiliser le chemin complet :
+& "C:\Users\[USER]\AppData\Local\Microsoft\WinGet\Packages\Hashicorp.Terraform_Microsoft.Winget.Source_8wekyb3d8bbwe\terraform.exe" --version
 ```
 
-### Ansible
+### Ansible (via Docker - recommandé pour Windows)
 ```bash
-sudo apt update
-sudo apt install -y ansible
-ansible --version
+# Construire l'image Ansible
+docker-compose -f docker-compose.ansible.yml build
+
+# Tester Ansible
+docker-compose -f docker-compose.ansible.yml run --rm ansible ansible-playbook --version
+
+# Exécuter le playbook
+docker-compose -f docker-compose.ansible.yml run --rm ansible ansible-playbook -i inventory.ini playbook.yml
 ```
 
 ## Configuration IAM

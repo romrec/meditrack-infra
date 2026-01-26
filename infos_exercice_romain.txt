@@ -1,0 +1,11 @@
+=== INFORMATIONS DE L'EXERCICE AWS ===
+Instance ID: 
+IP Publique: 
+Bucket S3: exercice-aws-debutant-romain-1768692463
+Rôle IAM: DebutantRoleRomain
+Groupe de sécurité: 
+Clé SSH: exercice-debutant-key-romain.pem
+
+Commande SSH: ssh -i exercice-debutant-key-romain.pem ec2-user@
+
+Commande de test S3: aws s3 ls s3://exercice-aws-debutant-romain-1768692463/

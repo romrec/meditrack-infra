@@ -1,12 +1,11 @@
 # main.tf
-provider "aws" {
-  region = "eu-west-3"
-}
+
 
 resource "random_id" "suffix" {
   byte_length = 4
 }
 
+# VPC
 resource "aws_vpc" "meditrack_vpc" {
   cidr_block = "10.0.0.0/16"
   tags = {
@@ -14,10 +13,97 @@ resource "aws_vpc" "meditrack_vpc" {
   }
 }
 
+# Sous-réseau public
+resource "aws_subnet" "meditrack_public_subnet" {
+  vpc_id            = aws_vpc.meditrack_vpc.id
+  cidr_block        = "10.0.1.0/24"
+  availability_zone = "eu-west-3a"
+  tags = {
+    Name = "MediTrack-public-subnet"
+  }
+}
+
+# Internet Gateway
+resource "aws_internet_gateway" "meditrack_igw" {
+  vpc_id = aws_vpc.meditrack_vpc.id
+  tags = {
+    Name = "MediTrack-igw"
+  }
+}
+
+# Table de routage
+resource "aws_route_table" "meditrack_public_rt" {
+  vpc_id = aws_vpc.meditrack_vpc.id
+
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = aws_internet_gateway.meditrack_igw.id
+  }
+
+  tags = {
+    Name = "MediTrack-public-rt"
+  }
+}
+
+# Association table de routage
+resource "aws_route_table_association" "meditrack_public_rta" {
+  subnet_id      = aws_subnet.meditrack_public_subnet.id
+  route_table_id = aws_route_table.meditrack_public_rt.id
+}
+
+# Groupe de sécurité
+resource "aws_security_group" "meditrack_sg" {
+  name        = "meditrack-sg"
+  description = "Security group for MediTrack"
+  vpc_id      = aws_vpc.meditrack_vpc.id
+
+  # SSH
+  ingress {
+    description = "SSH"
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]  # À restreindre en production
+  }
+
+  # HTTP
+  ingress {
+    description = "HTTP"
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  # HTTPS
+  ingress {
+    description = "HTTPS"
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name = "MediTrack-sg"
+  }
+}
+
+# Instance EC2
 resource "aws_instance" "meditrack_web_server" {
-  ami           = "ami-0c55b159cbfafe1f0"  # Amazon Linux 2
-  instance_type = "t2.micro"
-  subnet_id     = aws_subnet.meditrack_public_subnet.id
+  ami                    = "ami-0c55b159cbfafe1f0"  # Amazon Linux 2
+  instance_type          = "t2.micro"
+  subnet_id              = aws_subnet.meditrack_public_subnet.id
+  vpc_security_group_ids = [aws_security_group.meditrack_sg.id]
+  associate_public_ip_address = true
+
   tags = {
     Name = "MediTrack-web-server"
   }

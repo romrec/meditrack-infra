@@ -1,15 +1,106 @@
 ---
 - name: Configuration des serveurs MediTrack
-  hosts: all
+  hosts: webservers
   become: true
+  vars:
+    site_files_path: "../site-static"
+    nginx_root: "/var/www/html"
+    ssh_port: 22
+    http_port: 80
+    https_port: 443
+
   tasks:
+    # Installation du serveur web
     - name: Installer nginx
       apt:
         name: nginx
         state: present
+        update_cache: yes
       when: ansible_distribution == 'Ubuntu'
 
+    # Configuration sécurité - UFW
+    - name: Installer UFW (firewall)
+      apt:
+        name: ufw
+        state: present
+
+    - name: Configurer UFW - autoriser SSH
+      ufw:
+        rule: allow
+        port: "{{ ssh_port }}"
+        proto: tcp
+
+    - name: Configurer UFW - autoriser HTTP
+      ufw:
+        rule: allow
+        port: "{{ http_port }}"
+        proto: tcp
+
+    - name: Configurer UFW - autoriser HTTPS
+      ufw:
+        rule: allow
+        port: "{{ https_port }}"
+        proto: tcp
+
+    - name: Activer UFW
+      ufw:
+        state: enabled
+
+    # Gestion des utilisateurs
+    - name: Créer utilisateur meditrack
+      user:
+        name: meditrack
+        shell: /bin/bash
+        create_home: yes
+        state: present
+
+    - name: Ajouter meditrack au groupe sudo
+      user:
+        name: meditrack
+        groups: sudo
+        append: yes
+
+    # Déploiement des fichiers statiques
+    - name: Créer répertoire site web
+      file:
+        path: "{{ nginx_root }}"
+        state: directory
+        owner: www-data
+        group: www-data
+        mode: '0755'
+
+    - name: Copier index.html
+      copy:
+        src: "{{ site_files_path }}/index.html"
+        dest: "{{ nginx_root }}/index.html"
+        owner: www-data
+        group: www-data
+        mode: '0644'
+
+    - name: Copier style.css
+      copy:
+        src: "{{ site_files_path }}/style.css"
+        dest: "{{ nginx_root }}/style.css"
+        owner: www-data
+        group: www-data
+        mode: '0644'
+
+    # Configuration Nginx
+    - name: Configurer site par défaut Nginx
+      template:
+        src: nginx.conf.j2
+        dest: /etc/nginx/sites-available/default
+      notify: restart nginx
+
+    # Démarrer services
     - name: Démarrer nginx
       service:
         name: nginx
         state: started
+        enabled: yes
+
+  handlers:
+    - name: restart nginx
+      service:
+        name: nginx
+        state: restarted
