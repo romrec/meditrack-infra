@@ -10,6 +10,19 @@
     https_port: 443
 
   tasks:
+    # Correction des permissions SSH
+    - name: Corriger les permissions du répertoire SSH
+      file:
+        path: /root/.ssh
+        mode: '0700'
+        state: directory
+
+    - name: Corriger les permissions de la clé SSH
+      file:
+        path: /root/.ssh/meditrack-key.pem
+        mode: '0600'
+        state: file
+
     # Installation du serveur web
     - name: Installer nginx
       apt:

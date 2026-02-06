@@ -1,5 +1,20 @@
-# main.tf
+﻿# main.tf
 
+# Récupérer l'AMI Amazon Linux 2 la plus récente
+data "aws_ami" "amazon_linux_2" {
+  most_recent = true
+  owners      = ["amazon"]
+  
+  filter {
+    name   = "name"
+    values = ["amzn2-ami-hvm-*-x86_64-gp2"]
+  }
+  
+  filter {
+    name   = "virtualization-type"
+    values = ["hvm"]
+  }
+}
 
 resource "random_id" "suffix" {
   byte_length = 4
@@ -8,8 +23,12 @@ resource "random_id" "suffix" {
 # VPC
 resource "aws_vpc" "meditrack_vpc" {
   cidr_block = "10.0.0.0/16"
+  
   tags = {
-    Name = "MediTrack-vpc"
+    Name        = "${var.project_name}-vpc"
+    Project     = var.project_name
+    Environment = var.environment
+    ManagedBy   = "Terraform"
   }
 }
 
@@ -17,17 +36,25 @@ resource "aws_vpc" "meditrack_vpc" {
 resource "aws_subnet" "meditrack_public_subnet" {
   vpc_id            = aws_vpc.meditrack_vpc.id
   cidr_block        = "10.0.1.0/24"
-  availability_zone = "eu-west-3a"
+  availability_zone = "${var.region}a"
+  
   tags = {
-    Name = "MediTrack-public-subnet"
+    Name        = "${var.project_name}-public-subnet"
+    Project     = var.project_name
+    Environment = var.environment
+    ManagedBy   = "Terraform"
   }
 }
 
 # Internet Gateway
 resource "aws_internet_gateway" "meditrack_igw" {
   vpc_id = aws_vpc.meditrack_vpc.id
+  
   tags = {
-    Name = "MediTrack-igw"
+    Name        = "${var.project_name}-igw"
+    Project     = var.project_name
+    Environment = var.environment
+    ManagedBy   = "Terraform"
   }
 }
 
@@ -41,7 +68,10 @@ resource "aws_route_table" "meditrack_public_rt" {
   }
 
   tags = {
-    Name = "MediTrack-public-rt"
+    Name        = "${var.project_name}-public-rt"
+    Project     = var.project_name
+    Environment = var.environment
+    ManagedBy   = "Terraform"
   }
 }
 
@@ -57,13 +87,13 @@ resource "aws_security_group" "meditrack_sg" {
   description = "Security group for MediTrack"
   vpc_id      = aws_vpc.meditrack_vpc.id
 
-  # SSH
+  # SSH - RESTREINDRE en production via var.ssh_allowed_cidr
   ingress {
     description = "SSH"
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]  # À restreindre en production
+    cidr_blocks = [var.ssh_allowed_cidr]
   }
 
   # HTTP
@@ -92,43 +122,102 @@ resource "aws_security_group" "meditrack_sg" {
   }
 
   tags = {
-    Name = "MediTrack-sg"
+    Name        = "${var.project_name}-sg"
+    Project     = var.project_name
+    Environment = var.environment
+    ManagedBy   = "Terraform"
   }
 }
 
 # Instance EC2
 resource "aws_instance" "meditrack_web_server" {
-  ami                    = "ami-0c55b159cbfafe1f0"  # Amazon Linux 2
-  instance_type          = "t2.micro"
-  subnet_id              = aws_subnet.meditrack_public_subnet.id
-  vpc_security_group_ids = [aws_security_group.meditrack_sg.id]
+  ami                         = data.aws_ami.amazon_linux_2.id
+  instance_type               = var.instance_type
+  subnet_id                   = aws_subnet.meditrack_public_subnet.id
+  vpc_security_group_ids      = [aws_security_group.meditrack_sg.id]
   associate_public_ip_address = true
+  key_name                    = var.key_name
+
+  user_data = base64encode(<<-EOF
+    #!/bin/bash
+    # Mise à jour du système
+    yum update -y
+    
+    # Installation de Python 3 pour Ansible
+    yum install -y python3 python3-pip
+    
+    # Configuration pour Ansible
+    useradd -m -s /bin/bash ansible || true
+    mkdir -p /home/ansible/.ssh
+    chmod 700 /home/ansible/.ssh
+    
+    # Ajouter ansible au groupe sudoers
+    echo "ansible ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/ansible
+    chmod 440 /etc/sudoers.d/ansible
+  EOF
+  )
 
   tags = {
-    Name = "MediTrack-web-server"
+    Name        = "${var.project_name}-web-server"
+    Project     = var.project_name
+    Environment = var.environment
+    ManagedBy   = "Terraform"
   }
 
   root_block_device {
-    encrypted = true  # Chiffrement pour RGPD/HDS
+    encrypted   = true
+    volume_type = "gp3"
+    volume_size = 8
+    
+    tags = {
+      Name        = "${var.project_name}-root-volume"
+      Project     = var.project_name
+      Environment = var.environment
+    }
   }
 
   lifecycle {
-    prevent_destroy = false  # Autorise la suppression si nécessaire
-    ignore_changes  = [ami]  # Ignore les changements d'AMI
+    prevent_destroy = false
+    ignore_changes  = [ami]
   }
 }
 
 # Créer un bucket S3 pour le site statique
 resource "aws_s3_bucket" "meditrack_website" {
   bucket = "meditrack-website-cfb77422"
+  
   tags = {
-    Name = "MediTrack Website"
+    Name        = "${var.project_name} Website"
+    Project     = var.project_name
+    Environment = var.environment
+    ManagedBy   = "Terraform"
+  }
+}
+
+# Chiffrement S3
+resource "aws_s3_bucket_server_side_encryption_configuration" "meditrack_website" {
+  bucket = aws_s3_bucket.meditrack_website.id
+
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm = "AES256"
+    }
+  }
+}
+
+# Versioning S3
+resource "aws_s3_bucket_versioning" "meditrack_website" {
+  bucket = aws_s3_bucket.meditrack_website.id
+
+  versioning_configuration {
+    status = "Enabled"
   }
 }
 
 # Désactiver le blocage d'accès public pour le bucket (requis pour CloudFront)
 resource "aws_s3_bucket_public_access_block" "meditrack_website" {
   bucket = aws_s3_bucket.meditrack_website.id
+  
   block_public_acls       = false
   block_public_policy     = false
   ignore_public_acls      = false
@@ -143,6 +232,7 @@ resource "aws_cloudfront_origin_access_identity" "meditrack_oai" {
 # Politique de bucket S3 pour autoriser CloudFront
 resource "aws_s3_bucket_policy" "meditrack_website_policy" {
   bucket = aws_s3_bucket.meditrack_website.id
+  
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
@@ -157,6 +247,8 @@ resource "aws_s3_bucket_policy" "meditrack_website_policy" {
       }
     ]
   })
+  
+  depends_on = [aws_s3_bucket_public_access_block.meditrack_website]
 }
 
 # Uploader les fichiers statiques dans le bucket S3
@@ -223,7 +315,10 @@ resource "aws_cloudfront_distribution" "meditrack_distribution" {
   }
 
   tags = {
-    Name = "MediTrack Distribution"
+    Name        = "${var.project_name} Distribution"
+    Project     = var.project_name
+    Environment = var.environment
+    ManagedBy   = "Terraform"
   }
 }
 
@@ -238,5 +333,5 @@ terraform {
 }
 
 provider "aws" {
-  region = "eu-west-3"
+  region = var.region
 }

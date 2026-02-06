@@ -79,12 +79,12 @@ ansible-playbook --version
 ### 1. Créer un utilisateur IAM avec AdministratorAccess
 1. Se connecter à la console AWS
 2. Aller dans IAM > Users > Add user
-3. Nom : `meditrack-dev`
+3. Nom : `MediTrack-admin`
 4. Permissions : "Attach existing policies directly" > `AdministratorAccess`
 5. Créer l'utilisateur
 
 ### 2. Générer des clés d'accès
-1. Dans la console IAM, sélectionner l'utilisateur `meditrack-dev`
+1. Dans la console IAM, sélectionner l'utilisateur `MediTrack-admin`
 2. Aller dans l'onglet "Security credentials"
 3. Cliquer sur "Create access key"
 4. Copier `Access key ID` et `Secret access key`
@@ -213,7 +213,7 @@ ansible-playbook -i inventory.ini playbook.yml
 # URL fournie dans les outputs Terraform : cloudfront_url
 
 # Tester l'accès SSH à l'instance (optionnel)
-ssh -i ~/.ssh/meditrack-key.pem ec2-user@IP_PUBLIQUE
+ssh -i ~/.ssh/meditrack-key.pem ec2-user@$(terraform output -raw ec2_public_ip)
 ```
 
 ### 7. Nettoyage (optionnel)

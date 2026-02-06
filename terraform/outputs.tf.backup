@@ -1,4 +1,4 @@
-﻿output "ec2_public_ip" {
+output "ec2_public_ip" {
   description = "IP publique de l'instance EC2"
   value       = aws_instance.meditrack_web_server.public_ip
 }
@@ -21,14 +21,4 @@ output "vpc_id" {
 output "subnet_id" {
   description = "ID du sous-réseau public"
   value       = aws_subnet.meditrack_public_subnet.id
-}
-
-output "ami_id" {
-  description = "ID de l'AMI utilisée"
-  value       = data.aws_ami.amazon_linux_2.id
-}
-
-output "instance_id" {
-  description = "ID de l'instance EC2"
-  value       = aws_instance.meditrack_web_server.id
 }
