@@ -246,6 +246,8 @@ terraform destroy
 ## URL du site
 Après déploiement, le site sera accessible via l'URL CloudFront fournie dans les outputs Terraform.
 
+**Visiter le site MediTrack : https://d1s142kx98fvmr.cloudfront.net**
+
 ## Résolution des problèmes
 
 ### Problèmes courants
